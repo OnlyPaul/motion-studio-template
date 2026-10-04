@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebGL + three.js example</title>
+<!-- WebGL layer example: three.js under 2D type. Loops (last frame = first). Run: node render.mjs --entry examples/webgl-three.html -->
+<script type="importmap">{ "imports": { "three": "/node_modules/three/build/three.module.js" } }</script>
+<div id="stage"><canvas id="c"></canvas></div>
+<script type="module">
+import * as THREE from 'three';
+import { film } from '/lib/stage.js';
+import { font } from '/lib/draw.js';
+
+film({
+  dur: 3, loop: true, webgl: true, background: '#111113',
+  scenes: (grid, L, { gl, canvas }) => {
+    // three.js built once; every frame sets transforms from t, then renders.
+    const r = new THREE.WebGLRenderer({ canvas, context: gl });
+    r.setSize(L.w, L.h, false); r.autoClear = false;
+    const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(35, L.w / L.h, 0.1, 100);
+    cam.position.set(0, 0, L.pick({ portrait: 14, default: 9 }));
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0xff5a1f, roughness: 0.4 }));
+    scene.add(cube, new THREE.AmbientLight(0xffffff, 0.4));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.5); sun.position.set(3, 4, 5); scene.add(sun);
+    return [{ from: 0, to: Infinity, draw(g, { t, dur }) {
+      cube.rotation.set(0.5, (t / dur) * Math.PI * 2, 0);        // full turn: last frame = first
+      cube.scale.setScalar(1);
+      r.resetState(); r.render(scene, cam);
+      font(g, 9 * L.u, 700); g.fillStyle = '#EDEBE6'; g.fillText('WebGL', L.pad, L.h - L.pad);
+    }}];
+  },
+});
+</script>

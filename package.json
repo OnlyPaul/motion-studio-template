@@ -1,0 +1,28 @@
+{
+  "name": "motion-studio-template",
+  "private": true,
+  "type": "module",
+  "description": "Code-rendered motion design: index.html paints frame t via window.seek(t); render.mjs turns it into video.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "preview": "node scripts/serve.mjs",
+    "check": "node scripts/check.mjs",
+    "stills": "node render.mjs --stills mid",
+    "animatic": "node render.mjs --fps 30 --sub 1 --scale 0.5 --out animatic.mp4",
+    "render": "node render.mjs",
+    "render:all": "node render.mjs --format all",
+    "review": "node scripts/review.mjs",
+    "beats:grid": "node scripts/beatgrid.mjs",
+    "beats:measure": ".venv/bin/python scripts/beats.py audio/track.wav",
+    "sfx": "node scripts/sfx.mjs",
+    "mix": "node scripts/mix.mjs",
+    "setup": "npm install && npx playwright install chromium && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt",
+    "test": "node --test tests/harness.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "three": "0.186.1"
+  }
+}

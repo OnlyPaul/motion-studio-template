@@ -1,0 +1,25 @@
+<!doctype html>
+<div id="stage"><canvas id="c"></canvas><div id="overlay" style="position:absolute;top:0;color:white">DOM</div></div>
+<script type="module">
+import { film } from '/lib/stage.js';
+const mode = 'loop';
+const overlay = document.getElementById('overlay');
+film({
+  dur: mode === 'invalid' ? -1 : 2, fps: 12, format: '64x64', beats: '/beats.json',
+  loop: mode === 'loop' || mode === 'bad-loop', webgl: mode === 'webgl', background: '#111111',
+  fonts: mode === 'font' || mode === 'missing-font' ? [{ family: 'Fixture', src: mode === 'font' ? '/tests/fixtures/font.ttf' : '/missing-font.ttf' }] : [],
+  scenes: () => [
+    { from: 0, to: 1, draw }, { from: 1, to: 3, draw },
+  ],
+});
+function draw(g, { T, L, gl }) {
+  if (mode === 'worker-error' && T >= 1) console.error('worker fixture error');
+  if (mode === 'missing-asset') { const img = new Image(); img.src = '/missing-asset.png'; }
+  g.fillStyle = mode === 'bad-loop' ? (T < 1 ? '#ffffff' : '#000000') : '#ff5500';
+  if (mode === 'bad-loop') g.fillRect(0, 0, L.w, L.h);
+  else g.fillRect(20 + 8 * Math.sin(T * Math.PI), 25, 12, 12);
+  if (mode === 'font') { g.font = '12px Fixture'; g.fillText('Test', 0, 60); }
+  if (gl) { gl.clearColor(T / 2, 0.2, 0.1, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+  overlay.style.left = `${mode === 'loop' ? 5 + 3 * Math.sin(T * Math.PI) : T * 5}px`;
+}
+</script>

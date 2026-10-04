@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Pipeline test</title>
+<!--
+  Pipeline smoke test: 8 s on a 120 BPM grid (bar = 2 s). It exists to prove the engine,
+  renderer and audio chain work. Replace the scenes for a real film; keep the film() shape.
+-->
+<div id="stage"><canvas id="c"></canvas></div>
+<script type="module">
+import { film } from './lib/stage.js';
+import { SPRING, spring, track, trackColor, swap, progress, rand } from './lib/motion.js';
+import { font, fitSize, glyphs, rrect } from './lib/draw.js';
+
+const INK = '#111113', PAPER = '#EDEBE6', GRAPHITE = '#2A2A2E', ACCENT = '#FF5A1F';
+const DISPLAY = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+const MONO = 'Menlo, ui-monospace, monospace';
+
+film({
+  dur: 8, fps: 60, format: '9x16', bpm: 120, background: INK,
+  fonts: [], // brand fonts live in assets/fonts: { family: 'Inter', src: 'assets/fonts/Inter.woff2', weight: '100 900' }
+
+  scenes: (grid, L) => {
+    const b = grid.beat, bar = grid.bar;
+    const m = new OffscreenCanvas(1, 1).getContext('2d');
+
+    // Hook: left-aligned stack, one line per 8th note. Reflows per format instead of cropping.
+    const lines = L.pick({ landscape: ['EVERY FRAME', 'IS f(t).'], default: ['EVERY', 'FRAME', 'IS', 'f(t).'] });
+    const size = fitSize(m, lines, L.w - 2 * L.pad, 700, DISPLAY, L.pick({ portrait: 30, default: 22 }) * L.u);
+    const lh = size * 0.9, last = lines.length - 1;
+    const top = L.cy - (lh * lines.length) / 2 - size * 0.05;
+    const base = (k) => top + size * 0.78 + k * lh;
+    const accentAt = lines[last].indexOf('f(t)');
+    font(m, size, 700, DISPLAY);
+    const ulX = L.pad + m.measureText(lines[last].slice(0, accentAt)).width;
+    const wordW = m.measureText('f(t)').width;
+    const ulY = base(last) + size * 0.26, ulH = size * 0.085;
+
+    // Grid geometry (scene 3), needed now so the morphing shape lands exactly on cell c0.
+    const cols = L.pick({ portrait: 6, square: 8, landscape: 12 });
+    const cell = (L.w - 2 * L.pad) / cols;
+    const rows = Math.min(L.pick({ portrait: 10, default: 6 }), Math.floor((L.h - 2 * L.pad) / cell));
+    const gx = L.pad, gy = (L.h - rows * cell) / 2, sq = cell * 0.62;
+    const c0 = Math.floor(rows / 2) * cols + Math.floor(cols / 2) - 1;
+    const cellXY = (i) => [gx + (i % cols + 0.5) * cell, gy + (Math.floor(i / cols) + 0.5) * cell];
+    const [c0x, c0y] = cellXY(c0);
+
+    // One shape, never cut: underline -> button -> card -> circle -> grid cell.
+    // [time, cx, cy, w, h, radius, colour]
+    const cardW = L.pick({ portrait: 84 * L.u, default: 110 * L.u }), cardH = L.pick({ portrait: 104 * L.u, default: 68 * L.u });
+    const S = [
+      [0,           ulX,               ulY + ulH / 2, 0,        ulH,      0,         ACCENT],
+      [b(2),        ulX + wordW / 2,   ulY + ulH / 2, wordW,    ulH,      0,         ACCENT],
+      [bar(1),      L.cx,              L.cy,          64 * L.u, 15 * L.u, 2.5 * L.u, ACCENT],
+      [b(5),        L.cx,              L.cy,          cardW,    cardH,    3 * L.u,   PAPER],
+      [b(6),        L.cx,              L.cy,          40 * L.u, 40 * L.u, 20 * L.u,  ACCENT],
+      [b(7),        c0x,               c0y,           sq,       sq,       1.2 * L.u, PAPER],
+    ];
+    const key = (j, cfg = SPRING.default) => (T) => track(T, S.map((s) => [s[0], s[j]]), cfg);
+    const sx = key(1), sy = key(2), sw = key(3), sh = key(4), sr = key(5);  // one spring for the geometry
+    const sc = (T) => trackColor(T, S.map((s) => [s[0], s[6]]), SPRING.snappy);
+
+    // Lockup text (scene 4)
+    const lock = 'seek(t)';
+    const lockSize = fitSize(m, [lock], L.w - 2 * L.pad, 700, DISPLAY, L.u * 30);
+
+    return [
+      { from: 0, to: bar(1), draw(g, { t }) {
+        font(g, size, 700, DISPLAY);
+        lines.forEach((text, k) => {
+          const y = base(k);
+          g.save();
+          g.beginPath(); g.rect(0, y - size * 0.82, L.w, size * 1.06); g.clip();
+          for (const { ch, x, i } of glyphs(g, text)) {
+            const tin = (k * grid.spb) / 2 - 0.12 + i * 0.03;   // frame 0 is already moving
+            const tout = b(3) + 0.25 + k * 0.04 + i * 0.012;
+            const dy = (1 - spring(t - tin)) * size - spring(t - tout, SPRING.snappy) * size * 1.15;
+            g.fillStyle = k === last && i >= accentAt && i < accentAt + 4 ? ACCENT : PAPER;
+            g.fillText(ch, L.pad + x, y + dy);
+          }
+          g.restore();
+        });
+      }},
+
+      { from: 0, to: bar(2), draw(g, { T }) {
+        const w = sw(T), h = sh(T), x = sx(T) - w / 2, y = sy(T) - h / 2;
+        g.fillStyle = sc(T);
+        rrect(g, x, y, w, h, sr(T)); g.fill(); g.clip();
+        const content = (a, paint) => {
+          if (a <= 0) return;
+          g.save(); g.globalAlpha = a; g.filter = `blur(${(1 - a) * 10}px)`; paint(); g.restore();
+        };
+        content(swap(T, bar(1), b(5)), () => {          // button: the live time
+          font(g, 5.2 * L.u, 700, MONO); g.fillStyle = INK; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(`seek(${T.toFixed(3)})`, L.cx, L.cy);
+        });
+        content(swap(T, b(5), b(6)), () => {            // card: a spring drawing itself
+          const px = x + 7 * L.u, pw = w - 14 * L.u, py = y + h * 0.72, ph = h * 0.42;
+          font(g, 3.6 * L.u, 700, MONO); g.fillStyle = INK; g.textBaseline = 'top';
+          g.fillText('spring(t)', px, y + 6 * L.u);
+          const p = progress(T, b(5) + 0.05, b(6) - 0.1);
+          g.strokeStyle = ACCENT; g.lineWidth = 1.1 * L.u; g.lineCap = 'round';
+          g.beginPath();
+          for (let k = 0; k <= 120 * p; k++) {
+            const u = k / 120, v = spring(u * 0.9, SPRING.playful);
+            g.lineTo(px + u * pw, py - v * ph);
+          }
+          g.stroke();
+        });
+        content(swap(T, b(6), b(7)), () => {            // circle: the frame number
+          font(g, 11 * L.u, 700, MONO); g.fillStyle = INK; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(String(Math.round(T * 60)), L.cx, L.cy + 0.6 * L.u);
+        });
+      }},
+
+      { from: bar(2), to: bar(3), draw(g, { t }) {
+        const [ox, oy] = [c0x, c0y];
+        for (let i = 0; i < rows * cols; i++) {
+          const [x, y] = cellXY(i);
+          const d = Math.hypot(x - ox, y - oy) / cell;
+          const hot = i !== c0 && rand(7, i) < 0.16;
+          let s = i === c0 ? 1 : spring(t - d * 0.045, SPRING.snappy);
+          s *= 1 - 0.78 * spring(t - b(3) + b(0) - d * 0.02, SPRING.snappy);   // collapse on beat 3
+          const rot = hot ? spring(t - (b(2) - b(0)) - d * 0.015, SPRING.snappy) * Math.PI / 4 : 0;
+          g.save(); g.translate(x, y); g.rotate(rot);
+          g.fillStyle = i === c0 ? PAPER : hot ? ACCENT : GRAPHITE;
+          rrect(g, -sq * s / 2, -sq * s / 2, sq * s, sq * s, 1.2 * L.u * s); g.fill();
+          g.restore();
+        }
+      }},
+
+      { from: bar(3), to: Infinity, draw(g, { t }) {
+        const n = Math.min(lock.length, Math.floor(t / (grid.spb / 4)) + 1);   // typed on 16ths
+        font(g, lockSize, 700, DISPLAY); g.textBaseline = 'alphabetic';
+        const y = L.cy + lockSize * 0.3;
+        for (const { ch, x, i } of glyphs(g, lock).slice(0, n)) {
+          g.fillStyle = ch === 't' && i === 5 ? ACCENT : PAPER;
+          g.fillText(ch, L.pad + x, y);
+        }
+        const caretX = L.pad + g.measureText(lock.slice(0, n)).width + 0.8 * L.u;
+        if (n < lock.length || Math.floor(t * 4) % 2 === 0) {
+          g.fillStyle = ACCENT; g.fillRect(caretX, y - lockSize * 0.72, 1.4 * L.u, lockSize * 0.86);
+        }
+        const wipe = progress(t, grid.spb * 2, grid.spb * 2 + 0.35);      // sub-line wipes in on beat 2
+        g.save(); g.beginPath(); g.rect(L.pad, y, (L.w - 2 * L.pad) * wipe, lockSize); g.clip();
+        font(g, 5 * L.u, 400, MONO); g.fillStyle = PAPER; g.textBaseline = 'top';
+        g.fillText('node render.mjs', L.pad, y + 5 * L.u);
+        g.restore();
+      }},
+    ];
+  },
+
+  // SFX on the same grid. render.mjs writes these to out/cues.json; scripts/sfx.mjs plays them.
+  cues: (grid) => {
+    const b = grid.beat, c = [];
+    for (const i of [0, 4, 8, 12]) c.push({ t: b(i), type: 'thump' });
+    for (const i of [0, 1, 2]) c.push({ t: b(i), type: 'click', pan: -0.2 + i * 0.2 });
+    c.push({ t: b(3) + 0.25, type: 'whoosh', gain: 0.8 });
+    for (const i of [5, 6, 7]) c.push({ t: b(i), type: 'pop' });
+    for (let k = 1; k < 10; k++) c.push({ t: b(8) + k * 0.045, type: 'tick', gain: 0.5, pan: k % 2 ? -0.5 : 0.5 });
+    c.push({ t: b(10), type: 'click' }, { t: b(11), type: 'whoosh', gain: 0.6 }, { t: b(12), type: 'riser', gain: 0.7 });
+    for (let k = 0; k < 7; k++) c.push({ t: b(12) + k * grid.spb / 4, type: 'tick', gain: 0.6 });
+    c.push({ t: b(14), type: 'pop', gain: 0.7 });
+    return c;
+  },
+});
+</script>
